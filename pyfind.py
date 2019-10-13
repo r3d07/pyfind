@@ -110,6 +110,8 @@ class DuplicateFinder:
         self._all_yes = False
         self._all_no = False
 
+        self._regex = re.compile(r"^([yY]|[nN]|[aA])$")
+
         return
 
     @property
@@ -132,16 +134,13 @@ class DuplicateFinder:
 
         :return:
         """
-        response = input('%s [Y/N/A] ' % message)
+        while True:
+            response = input('%s [Y/N/A] ' % message)
 
-        if response.upper() == 'A':
-            self._all_yes = True
-            return True
+            if re.match(self._regex, response) is not None:
+                break
 
-        if response.upper() == 'Y':
-            return True
-
-        return False
+        return response
 
     def scan_directory(self):
         """
@@ -185,7 +184,7 @@ class DuplicateFinder:
 
         return
 
-    def del_dup_episodes_diff_ext(self, extension):
+    def del_dups_diff_ext(self, extension):
         """
 
         :param extension:
@@ -205,7 +204,7 @@ class DuplicateFinder:
 
         return
 
-    def del_dup_episodes_same_ext(self):
+    def del_dups_same_ext(self):
         """
 
         :return:
@@ -245,26 +244,35 @@ class DuplicateFinder:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--directory', default='.', nargs='?',
+    parser.add_argument('directory', default='.', nargs='?',
                         help='The directory from which the search should start')
     parser.add_argument('-f', '--filter-extensions', nargs='+', default='mkv,ts',
                         help='Specify the valid extensions in a comma separated list. Prefix the first extension '
                              'with a + to append to the existing defaults')
     parser.add_argument('-r', '--recursion-depth', default=0, type=int,
                         help='Specifies how many sub-folders to recurse into. -1 is infinite.')
-    parser.add_argument('-i', '--interactive', action='store_true',
-                        help='Interactive mode. Prompt for an operation for each file')
-    parser.add_argument('-e', '--delete-duplicates-by-ext', nargs='+', dest='extension',
-                        help='Specify a comma separated list of extensions of files to delete')
-    parser.add_argument('-u', '--move-uncategorized', nargs='?',
+    parser.add_argument('--del-dups-diff-ext', nargs='+', dest='dup_diff',
+                        help='Delete duplicate episodes that have different extensions. Specify a comma-separated '
+                             'list of extensions of files to delete')
+    parser.add_argument('--del-dups-same-ext', action='store_true', dest='dup_same',
+                        help='Delete duplicate episodes that have the same extension')
+    parser.add_argument('--move-uncategorized', nargs='+', dest='mv_uncat',
                         help='Move all uncategorized episodes to this directory')
     args = parser.parse_args()
+
+    # Make the output directory if needed
+    if args.mv_uncat is not None:
+        os.makedirs(args.mv_uncat, exist_ok=True)
 
     try:
         df = DuplicateFinder(args.directory, args.recursion_depth, args.filter_extensions)
         df.scan_directory()
-        df.del_dup_episodes_diff_ext(args.extension)
-        df.del_dup_episodes_same_ext()
+
+        if args.dup_diff is not None:
+            df.del_dups_diff_ext(args.extension)
+
+        if args.dup_same:
+            df.del_dups_same_ext()
 
         if args.move_uncategorized is not None:
             df.mv_uncategorized_episodes(args.move_uncategorized)
