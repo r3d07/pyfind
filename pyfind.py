@@ -85,18 +85,18 @@ class FileObject:
 
 
 class DuplicateFinder:
-    def __init__(self, directory='.', recursion_depth=0, valid_extensions=None):
+    def __init__(self, directory='.', depth=0, valid_extensions=None):
         """
 
         :param directory:
-        :param recursion_depth:
+        :param depth:
         :param valid_extensions:
         """
         if os.path.isdir(directory) is False:
             raise NotADirectoryError('%s is not a valid directory' % directory)
 
         self._directory = directory
-        self._recursion_depth = recursion_depth
+        self._recursion_depth = depth
         self._valid_extensions = valid_extensions
 
         self._files = []
@@ -276,7 +276,7 @@ class DuplicateFinder:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('directory', default='.', nargs='?',
+    parser.add_argument('base-directory', default='.', nargs='?',
                         help='The directory from which the search should start')
     parser.add_argument('-f', '--filter-extensions', nargs='+', default='mkv,ts',
                         help='Specify the valid extensions in a comma separated list. Prefix the first extension '
@@ -293,7 +293,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     mv_uncat = args.mv_uncat[0]
-    directory = args.directory
+    base_directory = args.base_directory
     recursion_depth = args.recursion_depth
     filter_extensions = args.filter_extensions
 
@@ -302,7 +302,7 @@ if __name__ == '__main__':
         os.makedirs(mv_uncat, exist_ok=True)
 
     try:
-        df = DuplicateFinder(directory, recursion_depth, filter_extensions)
+        df = DuplicateFinder(base_directory, recursion_depth, filter_extensions)
         df.scan_directory()
 
         if args.dup_diff:
