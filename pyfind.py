@@ -133,12 +133,15 @@ class DuplicateFinder:
         :return:
         """
         while True:
-            response = input('%s [Y/N/] ' % message)
+            response = input('%s [Y/N] ' % message)
 
             if re.match(self._regex, response) is not None:
                 break
 
-        return response
+        if response.upper() == 'Y':
+            return True
+
+        return False
 
     def scan_directory(self):
         """
@@ -276,7 +279,7 @@ class DuplicateFinder:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('base-directory', default='.', nargs='?',
+    parser.add_argument('base_directory', default='.', nargs='?',
                         help='The directory from which the search should start')
     parser.add_argument('-f', '--filter-extensions', nargs='+', default='mkv,ts',
                         help='Specify the valid extensions in a comma separated list. Prefix the first extension '
