@@ -4,6 +4,7 @@ import argparse
 import sys
 import os
 import re
+import shutil
 
 
 class FileObject:
@@ -13,7 +14,7 @@ class FileObject:
 
         self._abs_file_name = abs_file_name
         self._base_name = None
-        self._extensions = []
+        self._extension = []
         self._size = None
         self._parse_file()
 
@@ -42,12 +43,8 @@ class FileObject:
         return self._base_name
 
     @property
-    def extensions(self):
-        return self._extensions
-
-    @extensions.setter
-    def extensions(self, extension):
-        self._extensions.append(extension)
+    def extension(self):
+        return self._extension
 
     @property
     def size(self, human_readable=False):
@@ -78,7 +75,7 @@ class FileObject:
 
     def _parse_file(self):
         self._base_name = os.path.basename(self.abs_file_name)
-        self._extensions.append(os.path.splitext(self.abs_file_name)[1].strip('.'))
+        self._extension = os.path.splitext(self.abs_file_name)[1].strip('.')
         self._size = os.path.getsize(self.abs_file_name)
 
     def _parse_media_file(self):
@@ -105,12 +102,13 @@ class DuplicateFinder:
         self._files = []
         self._uncategorized_episodes = []
         self._dup_episodes_diff_ext = []
+        self._found_ext = set()
         self._dup_episodes_same_ext = []
 
         self._all_yes = False
         self._all_no = False
 
-        self._regex = re.compile(r"^([yY]|[nN]|[aA])$")
+        self._regex = re.compile(r"^([yY]|[nN])$")
 
         return
 
@@ -135,7 +133,7 @@ class DuplicateFinder:
         :return:
         """
         while True:
-            response = input('%s [Y/N/A] ' % message)
+            response = input('%s [Y/N/] ' % message)
 
             if re.match(self._regex, response) is not None:
                 break
@@ -158,8 +156,8 @@ class DuplicateFinder:
                 file_object = FileObject(os.path.join(root, file))
 
                 # Ensure we are only concerning ourselves with the file types that we care about
-                if file_object.extensions[0] not in self.valid_extensions:
-                    print('Valid: %s \t Actual: %s' % (self.valid_extensions, file_object.extensions[0]))
+                if file_object.extension not in self.valid_extensions:
+                    print('Valid: %s \t Actual: %s' % (self.valid_extensions, file_object.extension))
                     continue
 
                 # Populate the list of duplicates with the same extension
@@ -175,19 +173,22 @@ class DuplicateFinder:
 
                 # Populate the list of duplicate episodes with different extensions
                 for _file in self._files:
-                    if file_object.abs_episode_name == _file.abs_episode_name:
-                        _file.extensions.extend(file_object.extensions)
-                        self._dup_episodes_diff_ext.append(_file)
+                    if file_object.abs_episode_name != _file.abs_episode_name:
+                        continue
+
+                    # Append both extensions to our set of found extensions.
+                    self._found_ext.add(file_object.extension)
+                    self._found_ext.add(_file.extension)
+                    self._dup_episodes_diff_ext.append((file_object, _file))
 
                 # Keep track of all files that we have processed
                 self._files.append(file_object)
 
         return
 
-    def del_dups_diff_ext(self, extension):
+    def del_dups_diff_ext(self):
         """
 
-        :param extension:
         :return:
         """
         # If the list is empty, just return
@@ -196,11 +197,33 @@ class DuplicateFinder:
 
         self._clear_screen()
 
-        for episode in self._dup_episodes_diff_ext:
-            print('%s.%s' % (episode.abs_file_name, episode.extensions))
+        for duplicates in self._dup_episodes_diff_ext:
+            for episode in duplicates:
+                print('%s' % episode.abs_file_name)
 
-        print('Found %d files with the same name, but different extension' % len(self._dup_episodes_diff_ext))
-        self._yes_or_no('Do you want to delete these files? ')
+        print('Found %d files with the same name, but different extension.' % len(self._dup_episodes_diff_ext))
+
+        while True:
+            response = input('Which extensions would you like deleted %s? ' % self._found_ext)
+            exts_to_delete = response.split(',')
+            exts_to_delete = [ext.strip() for ext in exts_to_delete]
+
+            if any(ext in exts_to_delete for ext in self._found_ext):
+                break
+
+        self._clear_screen()
+        deletion_list = []
+        for duplicates in self._dup_episodes_diff_ext:
+            for episode in duplicates:
+                if episode.extension in exts_to_delete:
+                    deletion_list.append(episode)
+                    print(episode.abs_file_name)
+
+        response = self._yes_or_no('Do you want to delete these files? ')
+
+        if response is True:
+            for episode in deletion_list:
+                os.remove(episode.abs_file_name)
 
         return
 
@@ -219,11 +242,15 @@ class DuplicateFinder:
             print(episode.abs_file_name)
 
         print('Found %d duplicate files' % len(self._dup_episodes_same_ext))
-        self._yes_or_no('Do you want to delete these files? ')
+        response = self._yes_or_no('Do you want to delete these files? ')
+
+        if response is True:
+            for episode in self._dup_episodes_same_ext:
+                os.remove(episode.abs_file_name)
 
         return
 
-    def mv_uncategorized_episodes(self, dest_dir):
+    def mv_uncategorized(self, dest_dir):
         """
 
         :return:
@@ -238,7 +265,12 @@ class DuplicateFinder:
             print(episode.abs_file_name)
 
         print('Found %d uncategorized episodes' % len(self._uncategorized_episodes))
-        self._yes_or_no('Do you want to move these files? ')
+        response = self._yes_or_no('Do you want to move these files? ')
+
+        if response is True:
+            for episode in self._uncategorized_episodes:
+                shutil.move(episode.abs_file_name, dest_dir)
+
         return
 
 
@@ -251,7 +283,7 @@ if __name__ == '__main__':
                              'with a + to append to the existing defaults')
     parser.add_argument('-r', '--recursion-depth', default=0, type=int,
                         help='Specifies how many sub-folders to recurse into. -1 is infinite.')
-    parser.add_argument('--del-dups-diff-ext', nargs='+', dest='dup_diff',
+    parser.add_argument('--del-dups-diff-ext', action='store_true', dest='dup_diff',
                         help='Delete duplicate episodes that have different extensions. Specify a comma-separated '
                              'list of extensions of files to delete')
     parser.add_argument('--del-dups-same-ext', action='store_true', dest='dup_same',
@@ -260,22 +292,27 @@ if __name__ == '__main__':
                         help='Move all uncategorized episodes to this directory')
     args = parser.parse_args()
 
+    mv_uncat = args.mv_uncat[0]
+    directory = args.directory
+    recursion_depth = args.recursion_depth
+    filter_extensions = args.filter_extensions
+
     # Make the output directory if needed
-    if args.mv_uncat is not None:
-        os.makedirs(args.mv_uncat, exist_ok=True)
+    if mv_uncat is not None:
+        os.makedirs(mv_uncat, exist_ok=True)
 
     try:
-        df = DuplicateFinder(args.directory, args.recursion_depth, args.filter_extensions)
+        df = DuplicateFinder(directory, recursion_depth, filter_extensions)
         df.scan_directory()
 
-        if args.dup_diff is not None:
-            df.del_dups_diff_ext(args.extension)
+        if args.dup_diff:
+            df.del_dups_diff_ext()
 
         if args.dup_same:
             df.del_dups_same_ext()
 
-        if args.move_uncategorized is not None:
-            df.mv_uncategorized_episodes(args.move_uncategorized)
+        if args.mv_uncat is not None:
+            df.mv_uncategorized(mv_uncat)
 
     except KeyboardInterrupt:
         print('\nExiting...')
